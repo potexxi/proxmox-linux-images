@@ -2,12 +2,41 @@ name: Build Ubuntu 2404 Ghrunner
 
 on:
   workflow_dispatch:
+    inputs:
+      vm_id:
+        description: 'VM ID to create on Proxmox'
+        required: true
+      proxmox_ssh_host:
+        description: 'Proxmox SSH host (IP or hostname)'
+        required: true
+      vm_name:
+        description: 'VM name to set in Proxmox'
+        required: false
+        default: 'ubuntu-2404-ghrunner'
+      vm_cores:
+        description: 'Number of CPU cores for the VM'
+        required: false
+        default: '2'
+      vm_memory:
+        description: 'Memory (MB) for the VM'
+        required: false
+        default: '2048'
+      proxmox_storage:
+        description: 'Proxmox storage target for import'
+        required: false
+        default: 'local-lvm'
+      vm_bridge:
+        description: 'Proxmox bridge for network adapter'
+        required: false
+        default: 'vmbr0'
 
 env:
   PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
   PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
   PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
   PKR_VAR_proxmox_node: "default"
+  # Default URL for Ubuntu 24.04 cloud image (can be overridden)
+  UBUNTU_IMAGE_URL: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 
 jobs:
   build:
@@ -15,24 +44,66 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      
+      - name: Create images dir and download Ubuntu image to runner
+        run: |
+          mkdir -p ubuntu_2404_ghrunner/images
+          IMAGE_PATH=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.img
+          echo "Downloading $UBUNTU_IMAGE_URL -> $IMAGE_PATH"
+          curl -L --retry 3 -o "$IMAGE_PATH" "$UBUNTU_IMAGE_URL"
+          ls -lh "$IMAGE_PATH"
     
-      - name: Install Packer
+      - name: (optional) Convert image to qcow2 on runner
+        if: always()
         run: |
-          sudo apt update
-          sudo apt install packer
-          packer version
+          set -e
+          SRC=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.img
+          QCOW=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.qcow2
+          if [ -f "$QCOW" ]; then echo "$QCOW already exists"; exit 0; fi
+          if command -v qemu-img >/dev/null 2>&1; then
+            echo "Converting $SRC -> $QCOW"
+            qemu-img convert -f qcow2 -O qcow2 "$SRC" "$QCOW" || qemu-img convert -O qcow2 "$SRC" "$QCOW"
+          else
+            echo "qemu-img not available; copying raw image as .qcow2 to keep filename"
+            cp "$SRC" "$QCOW"
+          fi
 
-      - name: Init Packer Build
-        working-directory: ./ubuntu_2404_ghrunner/
+      - name: Upload image to Proxmox host
+        env:
+          PROXMOX_HOST: ${{ github.event.inputs.proxmox_ssh_host }}
+          PROXMOX_USER: ${{ secrets.PROXMOX_SSH_USER }}
+          PROXMOX_PORT: ${{ secrets.PROXMOX_SSH_PORT }}
+          VMNAME: ${{ github.event.inputs.vm_name }}
         run: |
-          packer init .
+          set -e
+          FILE=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.qcow2
+          echo "Uploading $FILE to ${PROXMOX_USER}@${PROXMOX_HOST}:/var/lib/vz/template/qemu/${VMNAME}.qcow2"
+          scp -P "${PROXMOX_PORT}" "$FILE" "${PROXMOX_USER}@${PROXMOX_HOST}:/var/lib/vz/template/qemu/${VMNAME}.qcow2"
 
-      - name: Validate Packer Build
-        working-directory: ./ubuntu_2404_ghrunner/
+      - name: Create VM and import disk on Proxmox
+        env:
+          PROXMOX_HOST: ${{ github.event.inputs.proxmox_ssh_host }}
+          PROXMOX_USER: ${{ secrets.PROXMOX_SSH_USER }}
+          PROXMOX_PORT: ${{ secrets.PROXMOX_SSH_PORT }}
+          VMID: ${{ github.event.inputs.vm_id }}
+          VMNAME: ${{ github.event.inputs.vm_name }}
+          VMCORES: ${{ github.event.inputs.vm_cores }}
+          VMMEM: ${{ github.event.inputs.vm_memory }}
+          STORAGE: ${{ github.event.inputs.proxmox_storage }}
+          BRIDGE: ${{ github.event.inputs.vm_bridge }}
         run: |
-          packer validate .
-
-      - name: Build Packer Build
-        working-directory: ./ubuntu_2404_ghrunner/
-        run: |
-          packer build .
+          set -e
+          ssh -p "${PROXMOX_PORT}" "${PROXMOX_USER}@${PROXMOX_HOST}" <<'EOF'
+          VMID=${VMID}
+          VMNAME=${VMNAME}
+          STORAGE=${STORAGE}
+          BRIDGE=${BRIDGE}
+          echo "Creating VM $VMID ($VMNAME)"
+          qm create $VMID --name $VMNAME --memory ${VMMEM} --cores ${VMCORES} --net0 virtio,bridge=${BRIDGE}
+          echo "Importing disk for VM $VMID"
+          qm importdisk $VMID /var/lib/vz/template/qemu/${VMNAME}.qcow2 ${STORAGE}
+          qm set $VMID --scsihw virtio-scsi-pci --scsi0 ${STORAGE}:vm-$VMID-disk-0
+          qm set $VMID --boot c --bootdisk scsi0
+          echo "Starting VM $VMID"
+          qm start $VMID
+          EOF
