@@ -1,7 +1,19 @@
-# Minimal Packer template: only the source block (VM metadata).
-# All download/upload/import steps are performed in the GitHub Actions workflow.
-
 source "null" "proxmox_prepare" {
-  # The workflow provides the image and runs the import steps.
+  communicator = "none"
+}
+
+build {
+  sources = ["source.null.proxmox_prepare"]
+
+  provisioner "shell-local" {
+    inline = [
+      "set -e",
+      "mkdir -p images",
+      "curl -fsSL ${var.ubuntu_image_url} -o images/${var.vm_name}.qcow2",
+      "qemu-img resize images/${var.vm_name}.qcow2 ${var.vm_disk_size_gb}G",
+      "scp -P \"${var.proxmox_ssh_port}\" \"images/${var.vm_name}.qcow2\" \"${var.proxmox_ssh_user}@${var.proxmox_ssh_host}:/var/lib/vz/template/qemu/${var.vm_name}.qcow2\"",
+      "ssh -p \"${var.proxmox_ssh_port}\" \"${var.proxmox_ssh_user}@${var.proxmox_ssh_host}\" <<'EOF'\nVMID=${var.vm_id}\nVMNAME=${var.vm_name}\nSTORAGE=${var.proxmox_storage}\nBRIDGE=${var.vm_bridge}\n\necho \"Creating VM $VMID ($VMNAME)\"\nqm create $VMID --name $VMNAME --memory ${var.vm_memory} --cores ${var.vm_cores} --net0 virtio,bridge=$BRIDGE\necho \"Importing disk for VM $VMID\"\nqm importdisk $VMID /var/lib/vz/template/qemu/${VMNAME}.qcow2 $STORAGE\nqm set $VMID --scsihw virtio-scsi-pci --scsi0 $STORAGE:vm-$VMID-disk-0\nqm set $VMID --boot c --bootdisk scsi0\necho \"Starting VM $VMID\"\nqm start $VMID\nEOF"
+    ]
+  }
 }
 

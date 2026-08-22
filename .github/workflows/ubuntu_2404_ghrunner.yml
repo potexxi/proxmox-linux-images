@@ -35,8 +35,15 @@ env:
   PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
   PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
   PKR_VAR_proxmox_node: "default"
-  # Default URL for Ubuntu 24.04 cloud image (can be overridden)
-  UBUNTU_IMAGE_URL: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+  PKR_VAR_proxmox_ssh_host: ${{ github.event.inputs.proxmox_ssh_host }}
+  PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
+  PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
+  PKR_VAR_vm_id: ${{ github.event.inputs.vm_id }}
+  PKR_VAR_vm_name: ${{ github.event.inputs.vm_name }}
+  PKR_VAR_vm_cores: ${{ github.event.inputs.vm_cores }}
+  PKR_VAR_vm_memory: ${{ github.event.inputs.vm_memory }}
+  PKR_VAR_proxmox_storage: ${{ github.event.inputs.proxmox_storage }}
+  PKR_VAR_vm_bridge: ${{ github.event.inputs.vm_bridge }}
 
 jobs:
   build:
@@ -44,66 +51,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      
-      - name: Create images dir and download Ubuntu image to runner
-        run: |
-          mkdir -p ubuntu_2404_ghrunner/images
-          IMAGE_PATH=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.img
-          echo "Downloading $UBUNTU_IMAGE_URL -> $IMAGE_PATH"
-          curl -L --retry 3 -o "$IMAGE_PATH" "$UBUNTU_IMAGE_URL"
-          ls -lh "$IMAGE_PATH"
-    
-      - name: (optional) Convert image to qcow2 on runner
-        if: always()
-        run: |
-          set -e
-          SRC=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.img
-          QCOW=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.qcow2
-          if [ -f "$QCOW" ]; then echo "$QCOW already exists"; exit 0; fi
-          if command -v qemu-img >/dev/null 2>&1; then
-            echo "Converting $SRC -> $QCOW"
-            qemu-img convert -f qcow2 -O qcow2 "$SRC" "$QCOW" || qemu-img convert -O qcow2 "$SRC" "$QCOW"
-          else
-            echo "qemu-img not available; copying raw image as .qcow2 to keep filename"
-            cp "$SRC" "$QCOW"
-          fi
 
-      - name: Upload image to Proxmox host
-        env:
-          PROXMOX_HOST: ${{ github.event.inputs.proxmox_ssh_host }}
-          PROXMOX_USER: ${{ secrets.PROXMOX_SSH_USER }}
-          PROXMOX_PORT: ${{ secrets.PROXMOX_SSH_PORT }}
-          VMNAME: ${{ github.event.inputs.vm_name }}
-        run: |
-          set -e
-          FILE=ubuntu_2404_ghrunner/images/ubuntu-2404-ghrunner-cloudimg-amd64.qcow2
-          echo "Uploading $FILE to ${PROXMOX_USER}@${PROXMOX_HOST}:/var/lib/vz/template/qemu/${VMNAME}.qcow2"
-          scp -P "${PROXMOX_PORT}" "$FILE" "${PROXMOX_USER}@${PROXMOX_HOST}:/var/lib/vz/template/qemu/${VMNAME}.qcow2"
+      - name: Packer init
+        working-directory: ubuntu_2404_ghrunner
+        run: packer init .
 
-      - name: Create VM and import disk on Proxmox
-        env:
-          PROXMOX_HOST: ${{ github.event.inputs.proxmox_ssh_host }}
-          PROXMOX_USER: ${{ secrets.PROXMOX_SSH_USER }}
-          PROXMOX_PORT: ${{ secrets.PROXMOX_SSH_PORT }}
-          VMID: ${{ github.event.inputs.vm_id }}
-          VMNAME: ${{ github.event.inputs.vm_name }}
-          VMCORES: ${{ github.event.inputs.vm_cores }}
-          VMMEM: ${{ github.event.inputs.vm_memory }}
-          STORAGE: ${{ github.event.inputs.proxmox_storage }}
-          BRIDGE: ${{ github.event.inputs.vm_bridge }}
-        run: |
-          set -e
-          ssh -p "${PROXMOX_PORT}" "${PROXMOX_USER}@${PROXMOX_HOST}" <<'EOF'
-          VMID=${VMID}
-          VMNAME=${VMNAME}
-          STORAGE=${STORAGE}
-          BRIDGE=${BRIDGE}
-          echo "Creating VM $VMID ($VMNAME)"
-          qm create $VMID --name $VMNAME --memory ${VMMEM} --cores ${VMCORES} --net0 virtio,bridge=${BRIDGE}
-          echo "Importing disk for VM $VMID"
-          qm importdisk $VMID /var/lib/vz/template/qemu/${VMNAME}.qcow2 ${STORAGE}
-          qm set $VMID --scsihw virtio-scsi-pci --scsi0 ${STORAGE}:vm-$VMID-disk-0
-          qm set $VMID --boot c --bootdisk scsi0
-          echo "Starting VM $VMID"
-          qm start $VMID
-          EOF
+      - name: Packer validate
+        working-directory: ubuntu_2404_ghrunner
+        run: packer validate .
+
+      - name: Packer build
+        working-directory: ubuntu_2404_ghrunner
+        run: packer build .
