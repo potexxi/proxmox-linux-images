@@ -3,147 +3,61 @@ name: Build Ubuntu 2404 Ghrunner
 on:
   workflow_dispatch:
     inputs:
+      proxmox_ssh_host:
+        required: true
       vm_id:
-        description: 'VM ID to create on Proxmox (optional). If omitted, the next free VMID on Proxmox will be used.'
         required: false
         default: ''
-      proxmox_ssh_host:
-        description: 'Proxmox SSH host (IP or hostname)'
-        required: true
       vm_name:
-        description: 'VM name to set in Proxmox'
         required: false
         default: 'ubuntu-2404-ghrunner'
       vm_cores:
-        description: 'Number of CPU cores for the VM'
         required: false
         default: '2'
       vm_memory:
-        description: 'Memory (MB) for the VM'
         required: false
         default: '2048'
       proxmox_storage:
-        description: 'Proxmox storage target for import'
         required: false
         default: 'local-lvm'
       vm_bridge:
-        description: 'Proxmox bridge for network adapter'
         required: false
         default: 'vmbr0'
+      proxmox_iso:
+        required: false
+        default: 'local:iso/ubuntu-2404-server.iso'
 
 env:
-  PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
-  PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
-  PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
-  PKR_VAR_proxmox_node: "default"
   PKR_VAR_proxmox_ssh_host: ${{ github.event.inputs.proxmox_ssh_host }}
-  PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
-  PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
   PKR_VAR_vm_id: ${{ github.event.inputs.vm_id || '0' }}
   PKR_VAR_vm_name: ${{ github.event.inputs.vm_name }}
   PKR_VAR_vm_cores: ${{ github.event.inputs.vm_cores }}
   PKR_VAR_vm_memory: ${{ github.event.inputs.vm_memory }}
   PKR_VAR_proxmox_storage: ${{ github.event.inputs.proxmox_storage }}
   PKR_VAR_vm_bridge: ${{ github.event.inputs.vm_bridge }}
+  PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
+  PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
+  PKR_VAR_proxmox_iso: ${{ github.event.inputs.proxmox_iso }}
+
 jobs:
   build:
     runs-on: self-hosted
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install Packer (manual)
-        env:
-          PACKER_VERSION: '1.16.0'
+      - name: Install Packer
         run: |
-          set -e
-          if command -v packer >/dev/null 2>&1; then
-            echo "packer already installed: $(packer version)"
-            exit 0
+          if ! command -v packer >/dev/null; then
+            curl -fsSL -o /tmp/packer.zip https://releases.hashicorp.com/packer/1.16.0/packer_1.16.0_linux_amd64.zip
+            sudo unzip -o /tmp/packer.zip -d /usr/local/bin
           fi
-
-          echo "Downloading packer ${PACKER_VERSION}"
-          curl -fsSL -o /tmp/packer.zip "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"
-
-          # Prefer installing to /usr/local/bin via sudo. If that fails, install to $HOME/.local/bin.
-          TARGET_DIR="/usr/local/bin"
-          if sudo unzip -o /tmp/packer.zip -d "$TARGET_DIR" >/dev/null 2>&1; then
-            echo "Installed packer to $TARGET_DIR"
-            rm -f /tmp/packer.zip
-            echo "Installed: $(packer version)"
-            exit 0
-          fi
-
-          echo "sudo install failed or not available — falling back to user-local install"
-          TARGET_DIR="$HOME/.local/bin"
-          mkdir -p "$TARGET_DIR"
-
-          # Extraction: try unzip, then python3, then python
-          if command -v unzip >/dev/null 2>&1; then
-            unzip -j -o /tmp/packer.zip -d "$TARGET_DIR"
-          elif command -v python3 >/dev/null 2>&1; then
-            python3 -c "import zipfile,sys; zipfile.ZipFile('/tmp/packer.zip').extractall(sys.argv[1])" "$TARGET_DIR"
-          elif command -v python >/dev/null 2>&1; then
-            python -c "import zipfile,sys; zipfile.ZipFile('/tmp/packer.zip').extractall(sys.argv[1])" "$TARGET_DIR"
-          else
-            echo "ERROR: neither 'unzip' nor 'python3'/'python' were available to extract the packer zip."
-            echo "Install 'unzip' or 'python3' on the runner, or preinstall packer on the machine."
-            exit 1
-          fi
-
-          chmod +x "$TARGET_DIR/packer"
-
-          # Make the binary available to later workflow steps
-          if [ -n "${GITHUB_PATH:-}" ]; then
-            echo "$TARGET_DIR" >> "$GITHUB_PATH"
-          else
-            echo "export PATH=\"$TARGET_DIR:$PATH\"" >> "$HOME/.profile"
-          fi
-
-          rm -f /tmp/packer.zip
-          export PATH="$TARGET_DIR:$PATH"
-          echo "Installed: $(packer version)"
-
-      - name: Ensure qemu-img is available
-        run: |
-          set -e
-          if command -v qemu-img >/dev/null 2>&1; then
-            echo "qemu-img already present: $(qemu-img --version | head -n1)"
-            exit 0
-          fi
-
-          echo "Attempting to install qemu-img (qemu-utils)..."
-
-          # Try with sudo apt-get (Debian/Ubuntu)
-          if command -v sudo >/dev/null 2>&1; then
-            if sudo apt-get update && sudo apt-get install -y qemu-utils; then
-              echo "Installed qemu-img via apt"
-              exit 0
-            fi
-            if sudo yum install -y qemu-img; then
-              echo "Installed qemu-img via yum"
-              exit 0
-            fi
-          else
-            # No sudo available - try direct package manager (may fail without root)
-            if [ -f /etc/debian_version ]; then
-              apt-get update && apt-get install -y qemu-utils && { echo "Installed qemu-img via apt"; exit 0; } || true
-            elif [ -f /etc/redhat-release ]; then
-              yum install -y qemu-img && { echo "Installed qemu-img via yum"; exit 0; } || true
-            fi
-          fi
-
-          echo "Failed to install qemu-img automatically.\nPlease install 'qemu-img' (package qemu-utils/qemu-img) on the self-hosted runner or preinstall it on the machine."
-          exit 1
 
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
         run: packer init .
 
-      - name: Packer validate
-        working-directory: ubuntu_2404_ghrunner
-        run: packer validate .
-
-      - name: Packer build
+      - name: Packer build (VM creation only)
         working-directory: ubuntu_2404_ghrunner
         run: packer build .
