@@ -11,21 +11,24 @@ on:
       vm_name:
         required: false
         default: 'ubuntu-2404-ghrunner'
+      proxmox_iso:
+        required: false
+        default: 'local:iso/ubuntu-2404-server.iso'
       vm_cores:
         required: false
         default: '2'
       vm_memory:
         required: false
         default: '2048'
+      vm_disk_size_gb:
+        required: false
+        default: '20'
       proxmox_storage:
         required: false
         default: 'local-lvm'
       vm_bridge:
         required: false
         default: 'vmbr0'
-      proxmox_iso:
-        required: false
-        default: 'local:iso/ubuntu-2404-server.iso'
 
 env:
   PKR_VAR_proxmox_ssh_host: ${{ github.event.inputs.proxmox_ssh_host }}
@@ -38,6 +41,7 @@ env:
   PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
   PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
   PKR_VAR_proxmox_iso: ${{ github.event.inputs.proxmox_iso }}
+  PKR_VAR_vm_disk_size_gb: ${{ github.event.inputs.vm_disk_size_gb }}
 
 jobs:
   build:
