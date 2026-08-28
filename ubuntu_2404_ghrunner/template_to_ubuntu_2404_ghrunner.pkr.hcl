@@ -29,33 +29,42 @@ build {
       echo "SSH_COMMAND=ssh -i key -p $SSH_PORT $SSH_USER@$SSH_HOST" >> /tmp/ssh_debug.log
 
     ssh -i key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s <<REMOTE
-      # VMID remote setzen
+      # Variablen in Remote-Umgebung setzen
+      VMID="$VMID"
+      VMNAME="$VMNAME"
+      MEM="$MEM"
+      CORES="$CORES"
+      BRIDGE="$BRIDGE"
+      STORAGE="$STORAGE"
+      CLOUDIMG="$CLOUDIMG"
+
+      # VMID remote holen falls 0
       if [ -z "\$VMID" ] || [ "\$VMID" -eq 0 ]; then
         VMID=\$(pvesh get /cluster/nextid)
       fi
 
       echo "[1/5] Creating VM \$VMID (\$VMNAME)"
-      qm create \$VMID \
+      qm create "\$VMID" \
         --name "\$VMNAME" \
         --memory "\$MEM" \
         --cores "\$CORES" \
-        --net0 virtio,bridge="\$BRIDGE" \
+        --net0 "virtio,bridge=\$BRIDGE" \
         --scsihw virtio-scsi-pci
 
       echo "[2/5] Importing cloud image: \$CLOUDIMG"
-      qm importdisk \$VMID "\$CLOUDIMG" "\$STORAGE"
+      qm importdisk "\$VMID" "\$CLOUDIMG" "\$STORAGE"
 
       echo "[3/5] Attaching disk"
-      qm set \$VMID --scsi0 "\$STORAGE:vm-\$VMID-disk-0"
+      qm set "\$VMID" --scsi0 "\$STORAGE:vm-\$VMID-disk-0"
 
       echo "[4/5] Configuring cloud-init"
-      qm set \$VMID --ide2 "\$STORAGE:cloudinit"
-      qm set \$VMID --boot order=scsi0
-      qm set \$VMID --serial0 socket
-      qm set \$VMID --vga serial0
+      qm set "\$VMID" --ide2 "\$STORAGE:cloudinit"
+      qm set "\$VMID" --boot order=scsi0
+      qm set "\$VMID" --serial0 socket
+      qm set "\$VMID" --vga serial0
 
       echo "[5/5] Starting VM \$VMID"
-      qm start \$VMID
+      qm start "\$VMID"
     REMOTE
     EOF
   ]
