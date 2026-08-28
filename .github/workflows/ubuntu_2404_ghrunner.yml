@@ -104,6 +104,38 @@ jobs:
           export PATH="$TARGET_DIR:$PATH"
           echo "Installed: $(packer version)"
 
+      - name: Ensure qemu-img is available
+        run: |
+          set -e
+          if command -v qemu-img >/dev/null 2>&1; then
+            echo "qemu-img already present: $(qemu-img --version | head -n1)"
+            exit 0
+          fi
+
+          echo "Attempting to install qemu-img (qemu-utils)..."
+
+          # Try with sudo apt-get (Debian/Ubuntu)
+          if command -v sudo >/dev/null 2>&1; then
+            if sudo apt-get update && sudo apt-get install -y qemu-utils; then
+              echo "Installed qemu-img via apt"
+              exit 0
+            fi
+            if sudo yum install -y qemu-img; then
+              echo "Installed qemu-img via yum"
+              exit 0
+            fi
+          else
+            # No sudo available - try direct package manager (may fail without root)
+            if [ -f /etc/debian_version ]; then
+              apt-get update && apt-get install -y qemu-utils && { echo "Installed qemu-img via apt"; exit 0; } || true
+            elif [ -f /etc/redhat-release ]; then
+              yum install -y qemu-img && { echo "Installed qemu-img via yum"; exit 0; } || true
+            fi
+          fi
+
+          echo "Failed to install qemu-img automatically.\nPlease install 'qemu-img' (package qemu-utils/qemu-img) on the self-hosted runner or preinstall it on the machine."
+          exit 1
+
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
         run: packer init .
