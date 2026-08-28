@@ -21,8 +21,9 @@ build {
       "SSH_HOST=${var.proxmox_ssh_host}",
       "SSH_USER=${var.proxmox_ssh_user}",
       "SSH_PORT=${var.proxmox_ssh_port}",
+      "SSH_PRIVATE_KEY=${var.ssh_private_key_path}",
 
-      "ssh -p \"$SSH_PORT\" \"$SSH_USER@$SSH_HOST\" \"bash -s\" << 'EOF'",
+      "ssh -i \"$SSH_PRIVATE_KEY\" -p \"$SSH_PORT\" \"$SSH_USER@$SSH_HOST\" \"bash -s\" << 'EOF'",
       "if [ -z \"$VMID\" ] || [ \"$VMID\" -eq 0 ]; then",
       "  VMID=$(pvesh get /cluster/nextid)",
       "fi",

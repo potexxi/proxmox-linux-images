@@ -42,6 +42,7 @@ env:
   PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
   PKR_VAR_proxmox_img: ${{ github.event.inputs.proxmox_img }}
   PKR_VAR_vm_disk_size_gb: ${{ github.event.inputs.vm_disk_size_gb }}
+  PKR_VAR_ssh_private_key_path: "key"
 
 jobs:
   build:
@@ -104,9 +105,19 @@ jobs:
           echo "If you want automatic install, ensure 'unzip' or 'python3' is available, or configure passwordless sudo for the runner user, or preinstall packer on the runner."
           exit 1
 
+      - name: write ssh private key to file
+        working-directory: ubuntu_2404_ghrunner
+        run: |
+          echo "${{ secrets.PROXMOX_SSH_PRIVATE_KEY }}" > key
+          chmod 600 key
+      
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
         run: packer init .
+      
+      - name: packer validate
+        working-directory: ubuntu_2404_ghrunner
+        run: packer validate .
 
       - name: Packer build (VM creation only)
         working-directory: ubuntu_2404_ghrunner

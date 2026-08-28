@@ -41,3 +41,7 @@ variable "proxmox_ssh_user" {
 variable "proxmox_ssh_port" {
   type    = number
 }
+
+variable "ssh_private_key_path" {
+  type    = string
+}
