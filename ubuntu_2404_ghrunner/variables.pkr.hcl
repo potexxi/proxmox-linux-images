@@ -28,6 +28,8 @@ variable "vm_name" {
 
 variable "vm_id" {
   type = number
+  default = 0
+  description = "VM ID to create on Proxmox. If 0 or unset, the template will pick the next available VMID on the host."
 }
 
 variable "vm_cores" {

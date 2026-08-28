@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       vm_id:
-        description: 'VM ID to create on Proxmox'
-        required: true
+        description: 'VM ID to create on Proxmox (optional). If omitted, the next free VMID on Proxmox will be used.'
+        required: false
+        default: ''
       proxmox_ssh_host:
         description: 'Proxmox SSH host (IP or hostname)'
         required: true
@@ -38,13 +39,12 @@ env:
   PKR_VAR_proxmox_ssh_host: ${{ github.event.inputs.proxmox_ssh_host }}
   PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
   PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
-  PKR_VAR_vm_id: ${{ github.event.inputs.vm_id }}
+  PKR_VAR_vm_id: ${{ github.event.inputs.vm_id || '0' }}
   PKR_VAR_vm_name: ${{ github.event.inputs.vm_name }}
   PKR_VAR_vm_cores: ${{ github.event.inputs.vm_cores }}
   PKR_VAR_vm_memory: ${{ github.event.inputs.vm_memory }}
   PKR_VAR_proxmox_storage: ${{ github.event.inputs.proxmox_storage }}
   PKR_VAR_vm_bridge: ${{ github.event.inputs.vm_bridge }}
-
 jobs:
   build:
     runs-on: self-hosted
