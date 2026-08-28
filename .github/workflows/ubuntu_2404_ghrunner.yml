@@ -42,7 +42,6 @@ env:
   PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
   PKR_VAR_proxmox_img: ${{ github.event.inputs.proxmox_img }}
   PKR_VAR_vm_disk_size_gb: ${{ github.event.inputs.vm_disk_size_gb }}
-  PKR_VAR_ssh_private_key_path: "key"
 
 jobs:
   build:
