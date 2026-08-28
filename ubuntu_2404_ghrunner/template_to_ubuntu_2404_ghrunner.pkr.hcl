@@ -1,25 +1,56 @@
 source "null" "proxmox_vm" {
   communicator = "none"
-
-  vm_id        = var.vm_id
-  vm_name      = var.vm_name
-  vm_cores     = var.vm_cores
-  vm_memory    = var.vm_memory
-  vm_disk_size = var.vm_disk_size_gb
-  vm_bridge    = var.vm_bridge
-  proxmox_iso  = var.proxmox_iso
-  proxmox_storage = var.proxmox_storage
-  proxmox_ssh_host = var.proxmox_ssh_host
-  proxmox_ssh_user = var.proxmox_ssh_user
-  proxmox_ssh_port = var.proxmox_ssh_port
 }
 
 build {
   sources = ["source.null.proxmox_vm"]
-  
+
   provisioner "shell-local" {
     inline = [
-      "echo 'VM wurde erstellt – keine Provisioner ausgeführt.'"
+      "set -e",
+
+      "VMID=${var.vm_id}",
+      "VMNAME=${var.vm_name}",
+      "CORES=${var.vm_cores}",
+      "MEM=${var.vm_memory}",
+      "DISKSIZE=${var.vm_disk_size_gb}",
+      "BRIDGE=${var.vm_bridge}",
+      "STORAGE=${var.proxmox_storage}",
+      "CLOUDIMG=${var.proxmox_cloudimg}",
+
+      "SSH_HOST=${var.proxmox_ssh_host}",
+      "SSH_USER=${var.proxmox_ssh_user}",
+      "SSH_PORT=${var.proxmox_ssh_port}",
+
+      "ssh -p \"$SSH_PORT\" \"$SSH_USER@$SSH_HOST\" \"bash -s\" << 'EOF'",
+      "if [ -z \"$VMID\" ] || [ \"$VMID\" -eq 0 ]; then",
+      "  VMID=$(pvesh get /cluster/nextid)",
+      "fi",
+
+      "echo \"[1/5] Creating VM $VMID ($VMNAME)\"",
+      "qm create $VMID \\",
+      "  --name $VMNAME \\",
+      "  --memory $MEM \\",
+      "  --cores $CORES \\",
+      "  --net0 virtio,bridge=$BRIDGE \\",
+      "  --scsihw virtio-scsi-pci",
+
+      "echo \"[2/5] Importing cloud image: $CLOUDIMG\"",
+      "qm importdisk $VMID $CLOUDIMG $STORAGE",
+
+      "echo \"[3/5] Attaching disk\"",
+      "qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0",
+
+      "echo \"[4/5] Configuring cloud-init\"",
+      "qm set $VMID --ide2 $STORAGE:cloudinit",
+      "qm set $VMID --boot order=scsi0",
+      "qm set $VMID --serial0 socket",
+      "qm set $VMID --vga serial0",
+
+      "echo \"[5/5] Starting VM $VMID\"",
+      "qm start $VMID",
+
+      "EOF"
     ]
   }
 }
