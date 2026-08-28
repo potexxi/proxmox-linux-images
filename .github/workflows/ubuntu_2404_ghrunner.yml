@@ -52,6 +52,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Install Packer
+        uses: hashicorp/setup-packer@v1
+        with:
+          version: '1.16.0'
+
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
         run: packer init .
