@@ -13,7 +13,7 @@ on:
         default: 'ubuntu-2404-ghrunner'
       proxmox_img:
         required: false
-        default: 'local:img/noble-server-cloudimg-amd64.img'
+        default: 'local:iso/noble-server-cloudimg-amd64.img'
       vm_cores:
         required: false
         default: '2'
