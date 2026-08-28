@@ -47,12 +47,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install Packer
+      - name: Install Packer (non-interactive)
+        env:
+          PACKER_VERSION: '1.16.0'
         run: |
-          if ! command -v packer >/dev/null; then
-            curl -fsSL -o /tmp/packer.zip https://releases.hashicorp.com/packer/1.16.0/packer_1.16.0_linux_amd64.zip
-            sudo unzip -o /tmp/packer.zip -d /usr/local/bin
+          set -e
+          if command -v packer >/dev/null 2>&1; then
+            echo "packer already installed: $(packer version)"
+            exit 0
           fi
+
+          echo "Downloading packer ${PACKER_VERSION}"
+          curl -fsSL -o /tmp/packer.zip "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"
+
+          # First try a user-local install to avoid requiring sudo/password prompts
+          TARGET_DIR="$HOME/.local/bin"
+          mkdir -p "$TARGET_DIR"
+
+          EXTRACTED=0
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -j -o /tmp/packer.zip -d "$TARGET_DIR" && EXTRACTED=1 || EXTRACTED=0
+          elif command -v python3 >/dev/null 2>&1; then
+            python3 -c "import zipfile,sys; zipfile.ZipFile('/tmp/packer.zip').extractall(sys.argv[1])" "$TARGET_DIR" && EXTRACTED=1 || EXTRACTED=0
+          elif command -v python >/dev/null 2>&1; then
+            python -c "import zipfile,sys; zipfile.ZipFile('/tmp/packer.zip').extractall(sys.argv[1])" "$TARGET_DIR" && EXTRACTED=1 || EXTRACTED=0
+          fi
+
+          if [ "$EXTRACTED" -eq 1 ]; then
+            chmod +x "$TARGET_DIR/packer"
+            if [ -n "${GITHUB_PATH:-}" ]; then
+              echo "$TARGET_DIR" >> "$GITHUB_PATH"
+            else
+              echo "export PATH=\"$TARGET_DIR:$PATH\"" >> "$HOME/.profile"
+            fi
+            rm -f /tmp/packer.zip
+            export PATH="$TARGET_DIR:$PATH"
+            echo "Installed packer to $TARGET_DIR: $(packer version)"
+            exit 0
+          fi
+
+          # If local extraction failed, try sudo non-interactively. Use sudo -n to avoid password prompts.
+          if sudo -n true 2>/dev/null; then
+            echo "Attempting system-wide install via sudo into /usr/local/bin"
+            sudo unzip -o /tmp/packer.zip -d /usr/local/bin
+            rm -f /tmp/packer.zip
+            echo "Installed packer to /usr/local/bin: $(packer version)"
+            exit 0
+          fi
+
+          echo "ERROR: Could not install packer non-interactively."
+          echo "Tried user-local extraction (unzip/python) and sudo install (non-interactive)."
+          echo "If you want automatic install, ensure 'unzip' or 'python3' is available, or configure passwordless sudo for the runner user, or preinstall packer on the runner."
+          exit 1
 
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
