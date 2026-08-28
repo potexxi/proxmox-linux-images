@@ -116,6 +116,7 @@ jobs:
         working-directory: ubuntu_2404_ghrunner
         run: |
           ls
+          cat key
           packer init .
       
       - name: packer validate
