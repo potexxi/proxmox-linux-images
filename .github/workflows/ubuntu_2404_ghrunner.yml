@@ -59,11 +59,31 @@ jobs:
           set -e
           if command -v packer >/dev/null 2>&1; then
             echo "packer already installed: $(packer version)"
-          else
-            echo "Installing packer ${PACKER_VERSION}"
-            curl -fsSL -o /tmp/packer.zip "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"
-            sudo unzip -o /tmp/packer.zip -d /usr/local/bin
+            exit 0
+          fi
+
+          echo "Installing packer ${PACKER_VERSION}"
+          curl -fsSL -o /tmp/packer.zip "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip"
+
+          # Try installing to /usr/local/bin (requires sudo). If sudo fails (password required),
+          # fall back to a user-local install in $HOME/.local/bin and add it to PATH for subsequent steps.
+          if sudo unzip -o /tmp/packer.zip -d /usr/local/bin >/dev/null 2>&1; then
+            echo "Installed packer to /usr/local/bin"
             rm -f /tmp/packer.zip
+            echo "Installed: $(packer version)"
+          else
+            echo "sudo install failed or not available — installing to $HOME/.local/bin instead"
+            mkdir -p "$HOME/.local/bin"
+            unzip -j -o /tmp/packer.zip -d "$HOME/.local/bin"
+            chmod +x "$HOME/.local/bin/packer"
+            # Make the binary available to later workflow steps
+            if [ -n "${GITHUB_PATH:-}" ]; then
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            else
+              echo "export PATH=\"$HOME/.local/bin:$PATH\"" >> "$HOME/.profile"
+            fi
+            rm -f /tmp/packer.zip
+            export PATH="$HOME/.local/bin:$PATH"
             echo "Installed: $(packer version)"
           fi
 
