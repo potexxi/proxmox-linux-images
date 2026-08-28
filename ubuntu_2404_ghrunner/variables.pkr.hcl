@@ -26,7 +26,7 @@ variable "proxmox_storage" {
   type    = string
 }
 
-variable "proxmox_iso" {
+variable "proxmox_img" {
   type    = string
 }
 

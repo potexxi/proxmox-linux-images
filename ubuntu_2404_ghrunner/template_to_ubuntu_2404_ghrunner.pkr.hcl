@@ -16,7 +16,7 @@ build {
       "DISKSIZE=${var.vm_disk_size_gb}",
       "BRIDGE=${var.vm_bridge}",
       "STORAGE=${var.proxmox_storage}",
-      "CLOUDIMG=${var.proxmox_cloudimg}",
+      "CLOUDIMG=${var.proxmox_img}",
 
       "SSH_HOST=${var.proxmox_ssh_host}",
       "SSH_USER=${var.proxmox_ssh_user}",
