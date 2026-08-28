@@ -11,9 +11,9 @@ on:
       vm_name:
         required: false
         default: 'ubuntu-2404-ghrunner'
-      proxmox_iso:
+      proxmox_img:
         required: false
-        default: 'local:iso/ubuntu-2404-server.iso'
+        default: 'local:img/noble-server-cloudimg-amd64.img'
       vm_cores:
         required: false
         default: '2'
@@ -40,7 +40,7 @@ env:
   PKR_VAR_vm_bridge: ${{ github.event.inputs.vm_bridge }}
   PKR_VAR_proxmox_ssh_user: ${{ secrets.PROXMOX_SSH_USER }}
   PKR_VAR_proxmox_ssh_port: ${{ secrets.PROXMOX_SSH_PORT }}
-  PKR_VAR_proxmox_iso: ${{ github.event.inputs.proxmox_iso }}
+  PKR_VAR_proxmox_img: ${{ github.event.inputs.proxmox_img }}
   PKR_VAR_vm_disk_size_gb: ${{ github.event.inputs.vm_disk_size_gb }}
 
 jobs:
