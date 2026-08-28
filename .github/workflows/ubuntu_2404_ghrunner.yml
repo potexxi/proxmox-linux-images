@@ -110,10 +110,13 @@ jobs:
         run: |
           echo "${{ secrets.PROXMOX_SSH_PRIVATE_KEY }}" > key
           chmod 600 key
+          ls
       
       - name: Packer init
         working-directory: ubuntu_2404_ghrunner
-        run: packer init .
+        run: |
+          ls
+          packer init .
       
       - name: packer validate
         working-directory: ubuntu_2404_ghrunner
